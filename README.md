@@ -6,6 +6,7 @@
 |---|---|
 | `@pyonta0215/aws-kit/cognito` | Cognito アクセストークンの検証（sub 許可リスト、fail-closed） |
 | `@pyonta0215/aws-kit/ssm` | SSM SecureString の読み出し（任意の TTL キャッシュ、値をエラーに出さない） |
+| `@pyonta0215/aws-kit/cognito/testing` | テスト用のトークン発行（合成鍵） |
 | `@pyonta0215/aws-kit/dynamo` | DocumentClient の生成、全件 Query、25件ずつの BatchWrite と再試行 |
 
 npm には公開していません。git タグで参照します。
@@ -13,7 +14,7 @@ npm には公開していません。git タグで参照します。
 ## インストール
 
 ```bash
-pnpm add github:pyonta0215/aws-kit#v0.1.0
+pnpm add github:pyonta0215/aws-kit#v0.2.0
 ```
 
 AWS SDK と aws-jwt-verify は同梱しません。使うサブパスに応じて、利用側で入れてください（peerDependencies）。
@@ -86,6 +87,22 @@ await batchWriteAll(doc, 'app', items.map((Item) => ({ PutRequest: { Item } })))
 ```
 
 `batchWriteAll` は `UnprocessedItems` を待ち時間を空けて再試行し、それでも残れば `UnprocessedItemsError` を投げます。
+
+### cognito/testing（テスト専用）
+
+合成した RSA 鍵でアクセストークンを発行します。JWKS を取りに行かずに、本物の署名検証の経路を通したテストが書けます。
+
+```ts
+import { createCognitoAccessTokenVerifierFromEnv } from '@pyonta0215/aws-kit/cognito';
+import { createTestTokenIssuer } from '@pyonta0215/aws-kit/cognito/testing';
+
+const issuer = createTestTokenIssuer({ userPoolId: 'us-east-1_Example1', clientId: 'exampleclient' });
+const env = { COGNITO_USER_POOL_ID: 'us-east-1_Example1', COGNITO_CLIENT_ID: 'exampleclient' };
+const verifier = createCognitoAccessTokenVerifierFromEnv(env, {}, { jwks: issuer.jwks });
+
+await verifier.verify(issuer.accessToken({ sub: 'me' }));        // ok
+await verifier.verify(issuer.accessToken({ token_use: 'id' }));  // invalid
+```
 
 ## ここに入れるものの条件
 

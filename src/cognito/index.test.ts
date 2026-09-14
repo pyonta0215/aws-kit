@@ -1,6 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import type { Jwks } from 'aws-jwt-verify/jwk';
 import {
   createCognitoAccessTokenVerifier,
   createCognitoAccessTokenVerifierFromEnv,
@@ -8,35 +6,17 @@ import {
   httpStatusFor,
   parseAllowedSubs,
 } from './index.js';
+import { createTestTokenIssuer } from './testing.js';
 
 // すべて合成値。実在の User Pool・Client・利用者とは関係ない。
 const POOL = 'us-east-1_Example1';
 const CLIENT = 'exampleclientid1234567890';
 const ISSUER = `https://cognito-idp.us-east-1.amazonaws.com/${POOL}`;
 
-const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const jwks = {
-  keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256', use: 'sig' }],
-} as unknown as Jwks;
-
-function b64url(value: object): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function token(claims: Record<string, unknown> = {}): string {
-  const now = Math.floor(Date.now() / 1000);
-  const body = `${b64url({ alg: 'RS256', kid: 'test-key', typ: 'JWT' })}.${b64url({
-    sub: 'sub-owner',
-    iss: ISSUER,
-    client_id: CLIENT,
-    token_use: 'access',
-    username: 'owner',
-    iat: now,
-    exp: now + 600,
-    ...claims,
-  })}`;
-  return `${body}.${sign('RSA-SHA256', Buffer.from(body), privateKey).toString('base64url')}`;
-}
+const issuer = createTestTokenIssuer({ userPoolId: POOL, clientId: CLIENT });
+const jwks = issuer.jwks;
+const token = (claims: Record<string, unknown> = {}) => issuer.accessToken({ sub: 'sub-owner', username: 'owner', ...claims });
+const b64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
 const verifier = (extra: { allowedSubs?: Iterable<string> } = {}) =>
   createCognitoAccessTokenVerifier({ userPoolId: POOL, clientId: CLIENT, jwks, ...extra });
