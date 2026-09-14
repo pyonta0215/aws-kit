@@ -91,7 +91,9 @@ describe('batchWriteAll', () => {
 describe('isConditionalCheckFailed', () => {
   it('例外名で判定する', () => {
     expect(isConditionalCheckFailed(Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' }))).toBe(true);
+    expect(isConditionalCheckFailed({ name: 'ConditionalCheckFailedException' })).toBe(true);
     expect(isConditionalCheckFailed(new Error('x'))).toBe(false);
+    expect(isConditionalCheckFailed(null)).toBe(false);
     expect(isConditionalCheckFailed('ConditionalCheckFailedException')).toBe(false);
   });
 });

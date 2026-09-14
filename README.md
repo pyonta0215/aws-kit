@@ -14,7 +14,7 @@ npm には公開していません。git タグで参照します。
 ## インストール
 
 ```bash
-pnpm add github:pyonta0215/aws-kit#v0.2.0
+pnpm add github:pyonta0215/aws-kit#v0.2.1
 ```
 
 AWS SDK と aws-jwt-verify は同梱しません。使うサブパスに応じて、利用側で入れてください（peerDependencies）。

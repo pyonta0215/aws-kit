@@ -53,5 +53,8 @@ export interface BatchWriteAllOptions {
  * 見ないと成功したように見えて一部が書かれない。再試行しても残れば {@link UnprocessedItemsError}。
  */
 export declare function batchWriteAll(doc: DynamoDBDocumentClient, tableName: string, requests: readonly WriteRequest[], options?: BatchWriteAllOptions): Promise<void>;
-/** 条件付き書き込み（ConditionExpression）が条件を満たさず失敗したか。 */
+/**
+ * 条件付き書き込み（ConditionExpression）が条件を満たさず失敗したか。
+ * Error のインスタンスに限らず `name` で判定する（SDK のクラスが複数コピーあっても、モックでも同じに扱う）。
+ */
 export declare function isConditionalCheckFailed(error: unknown): boolean;

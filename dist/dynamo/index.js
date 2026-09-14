@@ -68,7 +68,12 @@ export async function batchWriteAll(doc, tableName, requests, options = {}) {
         }
     }
 }
-/** 条件付き書き込み（ConditionExpression）が条件を満たさず失敗したか。 */
+/**
+ * 条件付き書き込み（ConditionExpression）が条件を満たさず失敗したか。
+ * Error のインスタンスに限らず `name` で判定する（SDK のクラスが複数コピーあっても、モックでも同じに扱う）。
+ */
 export function isConditionalCheckFailed(error) {
-    return error instanceof Error && error.name === 'ConditionalCheckFailedException';
+    return (typeof error === 'object' &&
+        error !== null &&
+        error.name === 'ConditionalCheckFailedException');
 }
