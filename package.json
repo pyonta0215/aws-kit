@@ -1,0 +1,63 @@
+{
+  "name": "@pyonta0215/aws-kit",
+  "version": "0.1.0",
+  "description": "Small helpers for personal AWS serverless apps: Cognito access-token verification, SSM SecureString reading, DynamoDB paging and batch writes.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./cognito": {
+      "types": "./dist/cognito/index.d.ts",
+      "default": "./dist/cognito/index.js"
+    },
+    "./ssm": {
+      "types": "./dist/ssm/index.d.ts",
+      "default": "./dist/ssm/index.js"
+    },
+    "./dynamo": {
+      "types": "./dist/dynamo/index.d.ts",
+      "default": "./dist/dynamo/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build && git diff --exit-code -- dist"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-ssm": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "aws-jwt-verify": ">=4.0.1 <6"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-dynamodb": {
+      "optional": true
+    },
+    "@aws-sdk/client-ssm": {
+      "optional": true
+    },
+    "@aws-sdk/lib-dynamodb": {
+      "optional": true
+    },
+    "aws-jwt-verify": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1131.0",
+    "@aws-sdk/client-ssm": "^3.1131.0",
+    "@aws-sdk/lib-dynamodb": "^3.1131.0",
+    "@types/node": "^22.20.2",
+    "aws-jwt-verify": "^5.2.1",
+    "aws-sdk-client-mock": "^4.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
+  }
+}
