@@ -44,7 +44,7 @@ describe('createSsmSecureParameterReader', () => {
       Parameter: { Value: 'ok' },
     });
     const reader = createSsmSecureParameterReader({ client, cacheTtlMs: Infinity });
-    await expect(reader.read('/k')).rejects.toThrow(SecureParameterError);
+    await expect(reader.read('/k')).rejects.toMatchObject({ kind: 'request-failed', sdkErrorName: 'ThrottlingException' });
     await expect(reader.read('/k')).resolves.toBe('ok');
   });
 
@@ -56,9 +56,17 @@ describe('createSsmSecureParameterReader', () => {
     expect((error as Error).message).not.toContain('detail-with-request-body');
   });
 
-  it('空の値は失敗', async () => {
-    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: '' } });
-    await expect(createSsmSecureParameterReader({ client }).read('/k')).rejects.toThrow('値が空');
+  it.each([
+    ['空の値', { Parameter: { Value: '' } }],
+    ['パラメータが返らない', {}],
+  ])('%s は kind: empty', async (_label, response) => {
+    ssm.on(GetParameterCommand).resolves(response);
+    await expect(createSsmSecureParameterReader({ client }).read('/k')).rejects.toMatchObject({ kind: 'empty' });
+  });
+
+  it('パラメータ名が空なら SSM を呼ばずに失敗', async () => {
+    await expect(createSsmSecureParameterReader({ client }).read(' ')).rejects.toMatchObject({ kind: 'invalid-name' });
+    expect(ssm.commandCalls(GetParameterCommand)).toHaveLength(0);
   });
 });
 
@@ -74,6 +82,13 @@ describe('resolveSecret / requireSecret', () => {
 
   it('パラメータ名が無ければ値の環境変数を使う', async () => {
     await expect(resolveSecret(source, { API_KEY: 'local' }, reader)).resolves.toBe('local');
+  });
+
+  it('パラメータ名があるのに reader が無ければ、値の環境変数へ逃げずに失敗', async () => {
+    await expect(resolveSecret(source, { API_KEY_PARAMETER: '/k', API_KEY: 'stale' })).rejects.toMatchObject({
+      kind: 'no-reader',
+    });
+    await expect(resolveSecret(source, { API_KEY: 'local' })).resolves.toBe('local');
   });
 
   it('どちらも無ければ undefined、require なら例外', async () => {

@@ -8,11 +8,16 @@
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 export class SecureParameterError extends Error {
     parameterName;
-    constructor(parameterName, reason) {
-        // パラメータ名は設定値であって秘密ではない。値はここに入れない。
-        super(`SecureString ${parameterName} を読めませんでした: ${reason}`);
+    kind;
+    /** kind が request-failed のときの SDK 例外名（例: AccessDeniedException） */
+    sdkErrorName;
+    constructor(parameterName, kind, sdkErrorName) {
+        // パラメータ名は設定値であって秘密ではない。値や SDK のメッセージはここに入れない。
+        super(`SecureString ${parameterName} を読めませんでした: ${sdkErrorName ?? kind}`);
         this.name = 'SecureParameterError';
         this.parameterName = parameterName;
+        this.kind = kind;
+        this.sdkErrorName = sdkErrorName;
     }
 }
 export function createSsmSecureParameterReader(options = {}) {
@@ -29,16 +34,16 @@ export function createSsmSecureParameterReader(options = {}) {
         }
         catch (error) {
             // 失敗の種類だけを出す。復号・権限エラーのメッセージにリクエストを含めない。
-            throw new SecureParameterError(name, error instanceof Error ? error.name : 'unknown error');
+            throw new SecureParameterError(name, 'request-failed', error instanceof Error ? error.name : 'UnknownError');
         }
         if (!value)
-            throw new SecureParameterError(name, '値が空です');
+            throw new SecureParameterError(name, 'empty');
         return value;
     }
     return {
         read(name) {
             if (name.trim() === '')
-                return Promise.reject(new SecureParameterError('(空)', 'パラメータ名が空です'));
+                return Promise.reject(new SecureParameterError('(空)', 'invalid-name'));
             if (ttl <= 0)
                 return fetchValue(name);
             const hit = cache.get(name);
@@ -60,11 +65,15 @@ export function createSsmSecureParameterReader(options = {}) {
  *
  * 両方あるときはパラメータを優先する。パラメータ名を設定するのはデプロイ先だけなので、
  * 手元に残った古い環境変数がデプロイ先の秘密を上書きすることが無い。
+ * パラメータ名があるのに reader が無いときも、値の環境変数へは逃げずに失敗する（kind: no-reader）。
  */
 export async function resolveSecret(source, env, reader) {
     const parameterName = env[source.parameterVariable]?.trim();
-    if (parameterName)
+    if (parameterName) {
+        if (!reader)
+            throw new SecureParameterError(parameterName, 'no-reader');
         return reader.read(parameterName);
+    }
     const value = source.valueVariable ? env[source.valueVariable] : undefined;
     return value === '' ? undefined : value;
 }

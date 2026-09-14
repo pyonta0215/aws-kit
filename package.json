@@ -1,6 +1,6 @@
 {
   "name": "@pyonta0215/aws-kit",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Small helpers for personal AWS serverless apps: Cognito access-token verification, SSM SecureString reading, DynamoDB paging and batch writes.",
   "license": "MIT",
   "type": "module",

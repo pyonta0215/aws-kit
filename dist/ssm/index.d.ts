@@ -9,9 +9,21 @@ import { SSMClient } from '@aws-sdk/client-ssm';
 export interface SecureParameterReader {
     read(name: string): Promise<string>;
 }
+export type SecureParameterErrorKind = 
+/** GetParameter が失敗した（権限・存在しない・スロットリングなど） */
+'request-failed'
+/** 値が空、またはパラメータが返ってこなかった */
+ | 'empty'
+/** パラメータ名が空 */
+ | 'invalid-name'
+/** パラメータ名は設定されているのに、読み出す reader が渡されていない */
+ | 'no-reader';
 export declare class SecureParameterError extends Error {
     readonly parameterName: string;
-    constructor(parameterName: string, reason: string);
+    readonly kind: SecureParameterErrorKind;
+    /** kind が request-failed のときの SDK 例外名（例: AccessDeniedException） */
+    readonly sdkErrorName: string | undefined;
+    constructor(parameterName: string, kind: SecureParameterErrorKind, sdkErrorName?: string);
 }
 export interface SsmSecureParameterReaderOptions {
     client?: SSMClient;
@@ -37,8 +49,9 @@ type Env = Readonly<Record<string, string | undefined>>;
  *
  * 両方あるときはパラメータを優先する。パラメータ名を設定するのはデプロイ先だけなので、
  * 手元に残った古い環境変数がデプロイ先の秘密を上書きすることが無い。
+ * パラメータ名があるのに reader が無いときも、値の環境変数へは逃げずに失敗する（kind: no-reader）。
  */
-export declare function resolveSecret(source: SecretSource, env: Env, reader: SecureParameterReader): Promise<string | undefined>;
+export declare function resolveSecret(source: SecretSource, env: Env, reader?: SecureParameterReader): Promise<string | undefined>;
 /** {@link resolveSecret} と同じ。ただし、どちらも設定されていなければ例外を投げる。 */
-export declare function requireSecret(source: SecretSource, env: Env, reader: SecureParameterReader): Promise<string>;
+export declare function requireSecret(source: SecretSource, env: Env, reader?: SecureParameterReader): Promise<string>;
 export {};
