@@ -1,6 +1,6 @@
 {
   "name": "@pyonta0215/aws-kit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Small helpers for personal AWS serverless apps: Cognito access-token verification, SSM SecureString reading, DynamoDB paging and batch writes.",
   "license": "MIT",
   "type": "module",
@@ -26,6 +26,22 @@
     "./dynamo": {
       "types": "./dist/dynamo/index.d.ts",
       "default": "./dist/dynamo/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "cognito": [
+        "dist/cognito/index.d.ts"
+      ],
+      "cognito/testing": [
+        "dist/cognito/testing.d.ts"
+      ],
+      "ssm": [
+        "dist/ssm/index.d.ts"
+      ],
+      "dynamo": [
+        "dist/dynamo/index.d.ts"
+      ]
     }
   },
   "scripts": {
