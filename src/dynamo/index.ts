@@ -9,8 +9,10 @@ import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
   QueryCommand,
+  ScanCommand,
   type BatchWriteCommandInput,
   type QueryCommandInput,
+  type ScanCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 
 export interface DocumentClientOptions {
@@ -39,9 +41,34 @@ export function createDocumentClient(options: DocumentClientOptions = {}): Dynam
   return DynamoDBDocumentClient.from(base, { marshallOptions: { removeUndefinedValues: true } });
 }
 
+/**
+ * `send` だけを使う。テストで `send` を持つ偽物を渡せるように、クライアント全体を要求しない。
+ */
+export type DocumentSender = Pick<DynamoDBDocumentClient, 'send'>;
+
 export interface QueryAllOptions {
   /** この件数に達したらページングをやめ、超えた分は捨てる */
   maxItems?: number;
+}
+
+/** {@link scanAll} の設定。{@link queryAll} と同じ。 */
+export type ScanAllOptions = QueryAllOptions;
+
+type Page = { Items?: Record<string, unknown>[] | undefined; LastEvaluatedKey?: Record<string, unknown> | undefined };
+
+async function readAllPages<T>(
+  readPage: (startKey: Record<string, unknown> | undefined) => Promise<Page>,
+  options: QueryAllOptions,
+): Promise<T[]> {
+  const items: T[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await readPage(startKey);
+    items.push(...((result.Items ?? []) as T[]));
+    startKey = result.LastEvaluatedKey;
+  } while (startKey && (options.maxItems === undefined || items.length < options.maxItems));
+
+  return options.maxItems === undefined ? items : items.slice(0, options.maxItems);
 }
 
 /**
@@ -51,21 +78,32 @@ export interface QueryAllOptions {
  * エラーにならずに結果が静かに欠ける。
  */
 export async function queryAll<T = Record<string, unknown>>(
-  doc: DynamoDBDocumentClient,
+  doc: DocumentSender,
   input: Omit<QueryCommandInput, 'ExclusiveStartKey'>,
   options: QueryAllOptions = {},
 ): Promise<T[]> {
-  const items: T[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const result = await doc.send(
-      new QueryCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) }),
-    );
-    items.push(...((result.Items ?? []) as T[]));
-    startKey = result.LastEvaluatedKey;
-  } while (startKey && (options.maxItems === undefined || items.length < options.maxItems));
+  return readAllPages<T>(
+    (startKey) => doc.send(new QueryCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) })),
+    options,
+  );
+}
 
-  return options.maxItems === undefined ? items : items.slice(0, options.maxItems);
+/**
+ * `LastEvaluatedKey` が無くなるまで Scan を繰り返し、全件を返す。
+ *
+ * Scan も 1MB で切れ、`FilterExpression` は読んだ後に掛かる。1ページ目だけを見ると、
+ * 条件に合う項目が2ページ目以降にあっても、空や一部だけの結果がエラーなしに返る。
+ * テーブル全体を読むぶん読み込み容量を使うので、件数が増えるなら Query に置き換える。
+ */
+export async function scanAll<T = Record<string, unknown>>(
+  doc: DocumentSender,
+  input: Omit<ScanCommandInput, 'ExclusiveStartKey'>,
+  options: ScanAllOptions = {},
+): Promise<T[]> {
+  return readAllPages<T>(
+    (startKey) => doc.send(new ScanCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) })),
+    options,
+  );
 }
 
 export type WriteRequest = NonNullable<BatchWriteCommandInput['RequestItems']>[string][number];
@@ -99,7 +137,7 @@ export interface BatchWriteAllOptions {
  * 見ないと成功したように見えて一部が書かれない。再試行しても残れば {@link UnprocessedItemsError}。
  */
 export async function batchWriteAll(
-  doc: DynamoDBDocumentClient,
+  doc: DocumentSender,
   tableName: string,
   requests: readonly WriteRequest[],
   options: BatchWriteAllOptions = {},

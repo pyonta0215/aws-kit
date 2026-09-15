@@ -5,7 +5,7 @@
  * ここにあるのは「黙って欠ける」を防ぐための道具だけ。
  */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { BatchWriteCommand, DynamoDBDocumentClient, QueryCommand, } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, DynamoDBDocumentClient, QueryCommand, ScanCommand, } from '@aws-sdk/lib-dynamodb';
 /**
  * `removeUndefinedValues: true` の DocumentClient を作る。
  * 省略可能な項目を undefined のまま渡すと、既定では例外になるため。
@@ -20,6 +20,16 @@ export function createDocumentClient(options = {}) {
         });
     return DynamoDBDocumentClient.from(base, { marshallOptions: { removeUndefinedValues: true } });
 }
+async function readAllPages(readPage, options) {
+    const items = [];
+    let startKey;
+    do {
+        const result = await readPage(startKey);
+        items.push(...(result.Items ?? []));
+        startKey = result.LastEvaluatedKey;
+    } while (startKey && (options.maxItems === undefined || items.length < options.maxItems));
+    return options.maxItems === undefined ? items : items.slice(0, options.maxItems);
+}
 /**
  * `LastEvaluatedKey` が無くなるまで Query を繰り返し、全件を返す。
  *
@@ -27,14 +37,17 @@ export function createDocumentClient(options = {}) {
  * エラーにならずに結果が静かに欠ける。
  */
 export async function queryAll(doc, input, options = {}) {
-    const items = [];
-    let startKey;
-    do {
-        const result = await doc.send(new QueryCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) }));
-        items.push(...(result.Items ?? []));
-        startKey = result.LastEvaluatedKey;
-    } while (startKey && (options.maxItems === undefined || items.length < options.maxItems));
-    return options.maxItems === undefined ? items : items.slice(0, options.maxItems);
+    return readAllPages((startKey) => doc.send(new QueryCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) })), options);
+}
+/**
+ * `LastEvaluatedKey` が無くなるまで Scan を繰り返し、全件を返す。
+ *
+ * Scan も 1MB で切れ、`FilterExpression` は読んだ後に掛かる。1ページ目だけを見ると、
+ * 条件に合う項目が2ページ目以降にあっても、空や一部だけの結果がエラーなしに返る。
+ * テーブル全体を読むぶん読み込み容量を使うので、件数が増えるなら Query に置き換える。
+ */
+export async function scanAll(doc, input, options = {}) {
+    return readAllPages((startKey) => doc.send(new ScanCommand({ ...input, ...(startKey ? { ExclusiveStartKey: startKey } : {}) })), options);
 }
 /** BatchWriteItem は1リクエスト25件まで。 */
 export const BATCH_WRITE_LIMIT = 25;

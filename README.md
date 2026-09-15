@@ -7,14 +7,14 @@
 | `@pyonta0215/aws-kit/cognito` | Cognito アクセストークンの検証（sub 許可リスト、fail-closed） |
 | `@pyonta0215/aws-kit/ssm` | SSM SecureString の読み出し（任意の TTL キャッシュ、値をエラーに出さない） |
 | `@pyonta0215/aws-kit/cognito/testing` | テスト用のトークン発行（合成鍵） |
-| `@pyonta0215/aws-kit/dynamo` | DocumentClient の生成、全件 Query、25件ずつの BatchWrite と再試行 |
+| `@pyonta0215/aws-kit/dynamo` | DocumentClient の生成、全件 Query / Scan、25件ずつの BatchWrite と再試行 |
 
 npm には公開していません。git タグで参照します。
 
 ## インストール
 
 ```bash
-pnpm add github:pyonta0215/aws-kit#v0.3.1
+pnpm add github:pyonta0215/aws-kit#v0.4.0
 ```
 
 AWS SDK と aws-jwt-verify は同梱しません。使うサブパスに応じて、利用側で入れてください（peerDependencies）。
@@ -75,7 +75,7 @@ const apiKey = await requireSecret(
 ### dynamo
 
 ```ts
-import { batchWriteAll, createDocumentClient, queryAll } from '@pyonta0215/aws-kit/dynamo';
+import { batchWriteAll, createDocumentClient, queryAll, scanAll } from '@pyonta0215/aws-kit/dynamo';
 
 const doc = createDocumentClient();
 
@@ -85,8 +85,19 @@ const items = await queryAll(doc, {
   ExpressionAttributeValues: { ':pk': 'SNAPSHOT' },
 });
 
+// FilterExpression は読んだ後に掛かるので、1ページ目が空でも続きを読む
+const runs = await scanAll(doc, {
+  TableName: 'app',
+  FilterExpression: 'entityType = :t',
+  ExpressionAttributeValues: { ':t': 'Run' },
+});
+
 await batchWriteAll(doc, 'app', items.map((Item) => ({ PutRequest: { Item } })));
 ```
+
+`queryAll` / `scanAll` / `batchWriteAll` は `send` を持つオブジェクトなら受け取ります（テストで偽物を渡せます）。
+
+`queryAll` / `scanAll` は `LastEvaluatedKey` が無くなるまで読みます（1回の Query / Scan は 1MB で切れ、1ページ目だけでは結果が黙って欠けるため）。`maxItems` を渡すと、その件数に達した時点で読むのをやめます。途中のページで失敗したときは、読めた分を返さずに例外を投げます。
 
 `batchWriteAll` は `UnprocessedItems` を待ち時間を空けて再試行し、それでも残れば `UnprocessedItemsError` を投げます。
 

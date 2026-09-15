@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { BatchWriteCommand, DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -7,6 +7,7 @@ import {
   createDocumentClient,
   isConditionalCheckFailed,
   queryAll,
+  scanAll,
   UnprocessedItemsError,
   type WriteRequest,
 } from './index.js';
@@ -49,6 +50,38 @@ describe('queryAll', () => {
     const items = await queryAll(doc, { TableName: 't' }, { maxItems: 3 });
     expect(items).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
     expect(ddb.commandCalls(QueryCommand)).toHaveLength(2);
+  });
+});
+
+describe('scanAll', () => {
+  it('FilterExpression で1ページ目が空でも、続きのページを読む', async () => {
+    ddb
+      .on(ScanCommand)
+      .resolvesOnce({ Items: [], LastEvaluatedKey: { id: 'a' } })
+      .resolvesOnce({ Items: [{ id: 'b' }], LastEvaluatedKey: { id: 'b' } })
+      .resolvesOnce({ Items: [{ id: 'c' }] });
+    const items = await scanAll(doc, { TableName: 't', FilterExpression: 'entityType = :e', ExpressionAttributeValues: { ':e': 'X' } });
+    expect(items).toEqual([{ id: 'b' }, { id: 'c' }]);
+    const calls = ddb.commandCalls(ScanCommand);
+    expect(calls.map((c) => c.args[0].input.ExclusiveStartKey)).toEqual([undefined, { id: 'a' }, { id: 'b' }]);
+    expect(calls[2]?.args[0].input.FilterExpression).toBe('entityType = :e');
+  });
+
+  it('maxItems に達したらやめて切り詰める', async () => {
+    ddb
+      .on(ScanCommand)
+      .resolvesOnce({ Items: [{ n: 1 }, { n: 2 }], LastEvaluatedKey: { k: 1 } })
+      .resolves({ Items: [{ n: 3 }] });
+    expect(await scanAll(doc, { TableName: 't' }, { maxItems: 1 })).toEqual([{ n: 1 }]);
+    expect(ddb.commandCalls(ScanCommand)).toHaveLength(1);
+  });
+
+  it('途中のページで失敗したら、読めた分を返さずに失敗させる', async () => {
+    ddb
+      .on(ScanCommand)
+      .resolvesOnce({ Items: [{ n: 1 }], LastEvaluatedKey: { k: 1 } })
+      .rejects(Object.assign(new Error('throttled'), { name: 'ProvisionedThroughputExceededException' }));
+    await expect(scanAll(doc, { TableName: 't' })).rejects.toThrow('throttled');
   });
 });
 
@@ -95,5 +128,13 @@ describe('isConditionalCheckFailed', () => {
     expect(isConditionalCheckFailed(new Error('x'))).toBe(false);
     expect(isConditionalCheckFailed(null)).toBe(false);
     expect(isConditionalCheckFailed('ConditionalCheckFailedException')).toBe(false);
+  });
+});
+
+describe('DocumentSender', () => {
+  it('send だけを持つ偽物でも読める', async () => {
+    const pages = [{ Items: [{ n: 1 }], LastEvaluatedKey: { k: 1 } }, { Items: [{ n: 2 }] }];
+    const fake = { send: async () => pages.shift() ?? {} };
+    expect(await queryAll(fake as never, { TableName: 't' })).toEqual([{ n: 1 }, { n: 2 }]);
   });
 });
