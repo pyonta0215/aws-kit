@@ -8,6 +8,7 @@
 | `@pyonta0215/aws-kit/ssm` | SSM SecureString の読み出し（任意の TTL キャッシュ、値をエラーに出さない） |
 | `@pyonta0215/aws-kit/cognito/testing` | テスト用のトークン発行（合成鍵） |
 | `@pyonta0215/aws-kit/dynamo` | DocumentClient の生成、全件 Query / Scan、25件ずつの BatchWrite と再試行 |
+| `@pyonta0215/aws-kit/config` | 環境変数の区分の宣言、コードとの食い違い検出、設定有無の一覧（値は扱わない） |
 
 npm には公開していません。git タグで参照します。
 
@@ -24,6 +25,7 @@ AWS SDK と aws-jwt-verify は同梱しません。使うサブパスに応じ�
 | `cognito` | `aws-jwt-verify`（4.x / 5.x） |
 | `ssm` | `@aws-sdk/client-ssm` |
 | `dynamo` | `@aws-sdk/client-dynamodb` と `@aws-sdk/lib-dynamodb` |
+| `config` | なし |
 
 SDK を利用側の1コピーにそろえるためです。esbuild で SDK を複数のコピーごと1ファイルにまとめると、Lambda の起動時に落ちることがあります。
 
@@ -100,6 +102,38 @@ await batchWriteAll(doc, 'app', items.map((Item) => ({ PutRequest: { Item } })))
 `queryAll` / `scanAll` は `LastEvaluatedKey` が無くなるまで読みます（1回の Query / Scan は 1MB で切れ、1ページ目だけでは結果が黙って欠けるため）。`maxItems` を渡すと、その件数に達した時点で読むのをやめます。途中のページで失敗したときは、読めた分を返さずに例外を投げます。
 
 `batchWriteAll` は `UnprocessedItems` を待ち時間を空けて再試行し、それでも残れば `UnprocessedItemsError` を投げます。
+
+### config
+
+環境変数を「何を指しているか」で区分して、コードの中で宣言します。一覧表をドキュメントに書く代わりに、宣言とコードの食い違いをテストで落とします。
+
+```ts
+import { defineConfig, describeConfig, findConfigDrift } from '@pyonta0215/aws-kit/config';
+
+export const config = defineConfig({
+  OPENAI_API_KEY_PARAMETER: { kind: 'secret-ref' },
+  COGNITO_CLIENT_ID: { kind: 'auth' },
+  LLM_MODEL_ID: { kind: 'cost' },
+  TABLE_NAME: { kind: 'wiring', note: 'CDK が設定する' },
+});
+
+// テスト: ソースの中身を渡すと、宣言漏れ（undeclared）と取り残し（unused）を返す
+expect(findConfigDrift(config, sources)).toEqual({ undeclared: [], unused: [] });
+
+// 注意の順（secret → secret-ref → auth → cost → wiring → local）に、設定の有無だけを返す
+describeConfig(config, process.env);
+```
+
+| kind | 指しているもの | 間違えたとき |
+|---|---|---|
+| `secret` | 値そのものが秘密（API キー） | 漏れると被害が出る。デプロイ先には置かない |
+| `secret-ref` | 秘密の置き場所（SSM パラメータ名、鍵ファイルのパス） | 読めずに止まる |
+| `auth` | 認証・権限の境界（Cognito、AssumeRole 先） | 他人が入れる、見えてはいけない物が見える |
+| `cost` | 課金に効く値（モデル、予算、単価） | 動くので気づきにくい |
+| `wiring` | リソースの配線（テーブル名、ARN、リージョン） | 動かないので気づける |
+| `local` | ローカル開発・ビルドだけ | 本番に影響しない |
+
+`findEnvReferences` が拾うのは `process.env.X` / `import.meta.env.X` / `env.X` / `environment.X` と、それぞれの `['X']` 形です。分割代入や、変数に入れた名前での参照は拾えません。
 
 ### cognito/testing（テスト専用）
 
