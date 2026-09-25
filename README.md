@@ -168,6 +168,26 @@ npm run check   # typecheck → test → build → dist に差分が無いこと
 
 `dist/` はコミットします。git タグで参照したとき、利用側でビルドを走らせずに使えるようにするためです。
 
+## 利用側を新しいタグへ上げる
+
+**package.json のタグを書き換えて `npm install` するだけでは上がりません。** npm は
+lockfile に解決済みのコミットを持っていて、範囲指定ではないため再解決しません
+（`node_modules` は古いまま、エラーも出ません）。パッケージ名を付けて入れ直します。
+
+```bash
+npm install "@pyonta0215/aws-kit@github:pyonta0215/aws-kit#vX.Y.Z" --save
+# workspaces のときは --workspace=<パッケージ名> を足す
+```
+
+pnpm は package.json を書き換えて `pnpm install` すれば再解決します。
+
+上げたあと、実体が入れ替わったことを確かめてから typecheck / test を通します
+（解決先のコミットまで出るのは npm 側）。
+
+```bash
+npm ls @pyonta0215/aws-kit     # pnpm なら pnpm ls -r @pyonta0215/aws-kit
+```
+
 ## リリース
 
 ```bash
