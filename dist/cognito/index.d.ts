@@ -12,6 +12,11 @@ export type AccessTokenResult = {
     /** Cognito のアクセストークンが持つ `username`。無ければ undefined。 */
     username: string | undefined;
     claims: Readonly<Record<string, unknown>>;
+    /**
+     * 読み取り専用の利用者か。true なら、呼び出し側は書き込み（GET / HEAD 以外など）を拒否する。
+     * このモジュールは HTTP を知らないので、拒否そのものはしない。
+     */
+    readOnly: boolean;
 } | {
     ok: false;
     reason: AccessTokenFailure;
@@ -29,6 +34,11 @@ export interface CognitoAccessTokenVerifierOptions {
      */
     allowedSubs?: Iterable<string>;
     /**
+     * 通すが読み取り専用にする sub。`allowedSubs` に無くても通し、結果の `readOnly` を true にする。
+     * 両方に載っていれば読み取り専用を優先する（設定の重複で権限が広がらないように）。
+     */
+    readOnlySubs?: Iterable<string>;
+    /**
      * JWKS を取得せずに使う鍵。テストで合成した鍵を渡すためのもので、本番では渡さない。
      */
     jwks?: Jwks;
@@ -41,6 +51,8 @@ export interface CognitoEnvNames {
      * 許可リストを読む環境変数名。指定した場合、その変数が未設定・空なら誰も通さない。
      */
     allowedSubs?: string;
+    /** 読み取り専用の sub を読む環境変数名。未設定・空なら読み取り専用の利用者はいない。 */
+    readOnlySubs?: string;
 }
 /**
  * 環境変数から検証器を作る。User Pool ID か Client ID が無ければ例外を投げる。

@@ -15,7 +15,7 @@ npm には公開していません。git タグで参照します。
 ## インストール
 
 ```bash
-pnpm add github:pyonta0215/aws-kit#v0.4.0
+pnpm add github:pyonta0215/aws-kit#v0.6.0
 ```
 
 AWS SDK と aws-jwt-verify は同梱しません。使うサブパスに応じて、利用側で入れてください（peerDependencies）。
@@ -54,6 +54,11 @@ app.use('/api/*', async (c, next) => {
 ```
 
 - 失敗は例外でなく `{ ok: false, reason }` で返します。`missing` と `invalid` は 401、`forbidden` は 403 です。
+- 読み取り専用の利用者は `readOnlySubs: 'READONLY_USER_SUBS'` で渡します。`ALLOWED_USER_SUBS` に無くても通り、結果の `readOnly` が true になります。両方に載っていれば読み取り専用を優先します。書き込みを拒否するのは呼び出し側です。
+
+  ```ts
+  if (result.readOnly && !['GET', 'HEAD'].includes(c.req.method)) return c.json({ error: 'read_only' }, 403);
+  ```
 - 独自ヘッダでトークンを送る場合は、`extractBearerToken` を使わずにヘッダの値をそのまま `verify` へ渡します。
 - ローカル開発で認証を外す仕組みは、あえて入れていません。環境変数ひとつで認証が外れる経路を、共有コードに持たせないためです。
 

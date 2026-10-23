@@ -7,6 +7,7 @@
  * - 失敗を例外でなく値で返す（401 と 403 を呼び出し側で分けられるように）
  * - sub の許可リスト。User Pool を複数プロダクトで共有していると、
  *   「検証が通った」は「このプロダクトを使ってよい」を意味しない
+ * - 読み取り専用の sub。通すが、書き込みを許すかどうかは呼び出し側が `readOnly` で決める
  * - 設定漏れで黙って開かない（fail-closed）
  */
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
@@ -23,6 +24,7 @@ export function createCognitoAccessTokenVerifier(options) {
     if (options.jwks)
         verifier.cacheJwks(options.jwks);
     const allowed = options.allowedSubs === undefined ? undefined : new Set(options.allowedSubs);
+    const readOnly = new Set(options.readOnlySubs ?? []);
     return {
         async verify(token) {
             const raw = token?.trim() ?? '';
@@ -39,10 +41,11 @@ export function createCognitoAccessTokenVerifier(options) {
             const sub = claims.sub;
             if (typeof sub !== 'string' || sub === '')
                 return { ok: false, reason: 'invalid' };
-            if (allowed !== undefined && !allowed.has(sub))
+            const isReadOnly = readOnly.has(sub);
+            if (allowed !== undefined && !allowed.has(sub) && !isReadOnly)
                 return { ok: false, reason: 'forbidden' };
             const username = typeof claims.username === 'string' ? claims.username : undefined;
-            return { ok: true, sub, username, claims };
+            return { ok: true, sub, username, claims, readOnly: isReadOnly };
         },
     };
 }
@@ -62,6 +65,7 @@ export function createCognitoAccessTokenVerifierFromEnv(env = process.env, names
         userPoolId,
         clientId,
         ...(names.allowedSubs === undefined ? {} : { allowedSubs: parseAllowedSubs(env[names.allowedSubs]) }),
+        ...(names.readOnlySubs === undefined ? {} : { readOnlySubs: parseAllowedSubs(env[names.readOnlySubs]) }),
         ...extra,
     });
 }

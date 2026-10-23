@@ -18,7 +18,7 @@ const jwks = issuer.jwks;
 const token = (claims: Record<string, unknown> = {}) => issuer.accessToken({ sub: 'sub-owner', username: 'owner', ...claims });
 const b64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
-const verifier = (extra: { allowedSubs?: Iterable<string> } = {}) =>
+const verifier = (extra: { allowedSubs?: Iterable<string>; readOnlySubs?: Iterable<string> } = {}) =>
   createCognitoAccessTokenVerifier({ userPoolId: POOL, clientId: CLIENT, jwks, ...extra });
 
 describe('createCognitoAccessTokenVerifier', () => {
@@ -55,6 +55,21 @@ describe('createCognitoAccessTokenVerifier', () => {
     expect((await verifier({ allowedSubs: ['sub-owner'] }).verify(token())).ok).toBe(true);
   });
 
+  it('許可リストの sub は readOnly が false', async () => {
+    expect(await verifier({ allowedSubs: ['sub-owner'] }).verify(token())).toMatchObject({ ok: true, readOnly: false });
+  });
+
+  it('読み取り専用の sub は許可リストに無くても通り、readOnly が true', async () => {
+    const v = verifier({ allowedSubs: ['sub-owner'], readOnlySubs: ['sub-viewer'] });
+    expect(await v.verify(token({ sub: 'sub-viewer' }))).toMatchObject({ ok: true, sub: 'sub-viewer', readOnly: true });
+    expect(await v.verify(token({ sub: 'sub-other' }))).toEqual({ ok: false, reason: 'forbidden' });
+  });
+
+  it('両方に載っている sub は読み取り専用を優先する', async () => {
+    const v = verifier({ allowedSubs: ['sub-owner'], readOnlySubs: ['sub-owner'] });
+    expect(await v.verify(token())).toMatchObject({ ok: true, readOnly: true });
+  });
+
   it('許可リストを空で渡すと誰も通さない', async () => {
     expect(await verifier({ allowedSubs: [] }).verify(token())).toEqual({ ok: false, reason: 'forbidden' });
   });
@@ -70,6 +85,22 @@ describe('createCognitoAccessTokenVerifierFromEnv', () => {
     expect(() => createCognitoAccessTokenVerifierFromEnv({ COGNITO_USER_POOL_ID: POOL })).toThrow(
       'COGNITO_CLIENT_ID',
     );
+  });
+
+  it('読み取り専用の変数名を指定すると、その sub を readOnly で通す', async () => {
+    const env = {
+      COGNITO_USER_POOL_ID: POOL,
+      COGNITO_CLIENT_ID: CLIENT,
+      ALLOWED_USER_SUBS: 'sub-owner',
+      READONLY_USER_SUBS: ' sub-viewer ,',
+    };
+    const v = createCognitoAccessTokenVerifierFromEnv(
+      env,
+      { allowedSubs: 'ALLOWED_USER_SUBS', readOnlySubs: 'READONLY_USER_SUBS' },
+      { jwks },
+    );
+    expect(await v.verify(token({ sub: 'sub-viewer' }))).toMatchObject({ ok: true, readOnly: true });
+    expect(await v.verify(token())).toMatchObject({ ok: true, readOnly: false });
   });
 
   it('許可リストの変数名を指定して値が空なら、誰も通さない', async () => {
