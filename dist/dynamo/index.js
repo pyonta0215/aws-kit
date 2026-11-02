@@ -21,6 +21,14 @@ export function createDocumentClient(options = {}) {
     return DynamoDBDocumentClient.from(base, { marshallOptions: { removeUndefinedValues: true } });
 }
 async function readAllPages(readPage, options) {
+    if (options.maxItems !== undefined) {
+        // 負の値は slice が末尾を削る意味になり、NaN はループが止まらない
+        if (!Number.isInteger(options.maxItems) || options.maxItems < 0) {
+            throw new Error(`maxItems は 0 以上の整数にしてください: ${String(options.maxItems)}`);
+        }
+        if (options.maxItems === 0)
+            return [];
+    }
     const items = [];
     let startKey;
     do {
@@ -68,6 +76,13 @@ export class UnprocessedItemsError extends Error {
 export async function batchWriteAll(doc, tableName, requests, options = {}) {
     const maxAttempts = options.maxAttempts ?? 5;
     const baseDelayMs = options.baseDelayMs ?? 50;
+    // NaN や Infinity だと上限に届かず、未処理が残る限り再試行が止まらない
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+        throw new Error(`maxAttempts は 1 以上の整数にしてください: ${String(maxAttempts)}`);
+    }
+    if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+        throw new Error(`baseDelayMs は 0 以上の有限の数にしてください: ${String(baseDelayMs)}`);
+    }
     const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     for (let i = 0; i < requests.length; i += BATCH_WRITE_LIMIT) {
         let pending = requests.slice(i, i + BATCH_WRITE_LIMIT);

@@ -47,7 +47,7 @@ export function createDocumentClient(options: DocumentClientOptions = {}): Dynam
 export type DocumentSender = Pick<DynamoDBDocumentClient, 'send'>;
 
 export interface QueryAllOptions {
-  /** この件数に達したらページングをやめ、超えた分は捨てる */
+  /** この件数に達したらページングをやめ、超えた分は捨てる。0 以上の整数。0 なら読まずに空を返す。 */
   maxItems?: number;
 }
 
@@ -60,6 +60,13 @@ async function readAllPages<T>(
   readPage: (startKey: Record<string, unknown> | undefined) => Promise<Page>,
   options: QueryAllOptions,
 ): Promise<T[]> {
+  if (options.maxItems !== undefined) {
+    // 負の値は slice が末尾を削る意味になり、NaN はループが止まらない
+    if (!Number.isInteger(options.maxItems) || options.maxItems < 0) {
+      throw new Error(`maxItems は 0 以上の整数にしてください: ${String(options.maxItems)}`);
+    }
+    if (options.maxItems === 0) return [];
+  }
   const items: T[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -122,9 +129,9 @@ export class UnprocessedItemsError extends Error {
 }
 
 export interface BatchWriteAllOptions {
-  /** 1チャンクあたりの最大試行回数（初回を含む）。既定 5。 */
+  /** 1チャンクあたりの最大試行回数（初回を含む）。1 以上の整数。既定 5。 */
   maxAttempts?: number;
-  /** 再試行の待ち時間の基準（ミリ秒）。試行ごとに倍になる。既定 50。 */
+  /** 再試行の待ち時間の基準（ミリ秒）。試行ごとに倍になる。0 以上の有限の数。既定 50。 */
   baseDelayMs?: number;
   /** テスト用 */
   sleep?: (ms: number) => Promise<void>;
@@ -144,6 +151,13 @@ export async function batchWriteAll(
 ): Promise<void> {
   const maxAttempts = options.maxAttempts ?? 5;
   const baseDelayMs = options.baseDelayMs ?? 50;
+  // NaN や Infinity だと上限に届かず、未処理が残る限り再試行が止まらない
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error(`maxAttempts は 1 以上の整数にしてください: ${String(maxAttempts)}`);
+  }
+  if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+    throw new Error(`baseDelayMs は 0 以上の有限の数にしてください: ${String(baseDelayMs)}`);
+  }
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   for (let i = 0; i < requests.length; i += BATCH_WRITE_LIMIT) {
