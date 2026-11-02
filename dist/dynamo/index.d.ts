@@ -25,7 +25,7 @@ export declare function createDocumentClient(options?: DocumentClientOptions): D
  */
 export type DocumentSender = Pick<DynamoDBDocumentClient, 'send'>;
 export interface QueryAllOptions {
-    /** この件数に達したらページングをやめ、超えた分は捨てる */
+    /** この件数に達したらページングをやめ、超えた分は捨てる。0 以上の整数。0 なら読まずに空を返す。 */
     maxItems?: number;
 }
 /** {@link scanAll} の設定。{@link queryAll} と同じ。 */
@@ -53,9 +53,9 @@ export declare class UnprocessedItemsError extends Error {
     constructor(tableName: string, unprocessed: readonly WriteRequest[]);
 }
 export interface BatchWriteAllOptions {
-    /** 1チャンクあたりの最大試行回数（初回を含む）。既定 5。 */
+    /** 1チャンクあたりの最大試行回数（初回を含む）。1 以上の整数。既定 5。 */
     maxAttempts?: number;
-    /** 再試行の待ち時間の基準（ミリ秒）。試行ごとに倍になる。既定 50。 */
+    /** 再試行の待ち時間の基準（ミリ秒）。試行ごとに倍になる。0 以上の有限の数。既定 50。 */
     baseDelayMs?: number;
     /** テスト用 */
     sleep?: (ms: number) => Promise<void>;

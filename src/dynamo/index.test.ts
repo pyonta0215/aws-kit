@@ -51,6 +51,16 @@ describe('queryAll', () => {
     expect(items).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
     expect(ddb.commandCalls(QueryCommand)).toHaveLength(2);
   });
+
+  it('maxItems が 0 なら読まずに空を返す', async () => {
+    expect(await queryAll(doc, { TableName: 't' }, { maxItems: 0 })).toEqual([]);
+    expect(ddb.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('maxItems が %s なら読む前に失敗させる', async (maxItems) => {
+    await expect(queryAll(doc, { TableName: 't' }, { maxItems })).rejects.toThrow('maxItems');
+    expect(ddb.commandCalls(QueryCommand)).toHaveLength(0);
+  });
 });
 
 describe('scanAll', () => {
@@ -82,6 +92,11 @@ describe('scanAll', () => {
       .resolvesOnce({ Items: [{ n: 1 }], LastEvaluatedKey: { k: 1 } })
       .rejects(Object.assign(new Error('throttled'), { name: 'ProvisionedThroughputExceededException' }));
     await expect(scanAll(doc, { TableName: 't' })).rejects.toThrow('throttled');
+  });
+
+  it('maxItems が負なら読む前に失敗させる', async () => {
+    await expect(scanAll(doc, { TableName: 't' }, { maxItems: -1 })).rejects.toThrow('maxItems');
+    expect(ddb.commandCalls(ScanCommand)).toHaveLength(0);
   });
 });
 
@@ -117,6 +132,16 @@ describe('batchWriteAll', () => {
 
   it('空なら何もしない', async () => {
     await batchWriteAll(doc, 't', []);
+    expect(ddb.commandCalls(BatchWriteCommand)).toHaveLength(0);
+  });
+
+  it.each([0, 2.5, Number.NaN, Number.POSITIVE_INFINITY])('maxAttempts が %s なら書く前に失敗させる', async (maxAttempts) => {
+    await expect(batchWriteAll(doc, 't', [put(1)], { maxAttempts, sleep: noSleep })).rejects.toThrow('maxAttempts');
+    expect(ddb.commandCalls(BatchWriteCommand)).toHaveLength(0);
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])('baseDelayMs が %s なら書く前に失敗させる', async (baseDelayMs) => {
+    await expect(batchWriteAll(doc, 't', [put(1)], { baseDelayMs, sleep: noSleep })).rejects.toThrow('baseDelayMs');
     expect(ddb.commandCalls(BatchWriteCommand)).toHaveLength(0);
   });
 });

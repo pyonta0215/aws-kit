@@ -104,7 +104,7 @@ await batchWriteAll(doc, 'app', items.map((Item) => ({ PutRequest: { Item } })))
 
 `queryAll` / `scanAll` / `batchWriteAll` は `send` を持つオブジェクトなら受け取ります（テストで偽物を渡せます）。
 
-`queryAll` / `scanAll` は `LastEvaluatedKey` が無くなるまで読みます（1回の Query / Scan は 1MB で切れ、1ページ目だけでは結果が黙って欠けるため）。`maxItems` を渡すと、その件数に達した時点で読むのをやめます。途中のページで失敗したときは、読めた分を返さずに例外を投げます。
+`queryAll` / `scanAll` は `LastEvaluatedKey` が無くなるまで読みます（1回の Query / Scan は 1MB で切れ、1ページ目だけでは結果が黙って欠けるため）。`maxItems` を渡すと、その件数に達した時点で読むのをやめます（0 以上の整数。0 なら読まずに空を返し、それ以外の値は読む前に例外）。途中のページで失敗したときは、読めた分を返さずに例外を投げます。
 
 `batchWriteAll` は `UnprocessedItems` を待ち時間を空けて再試行し、それでも残れば `UnprocessedItemsError` を投げます。
 
